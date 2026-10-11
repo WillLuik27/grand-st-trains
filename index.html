@@ -1,0 +1,648 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Grand St">
+<meta name="theme-color" content="#000000">
+<meta name="color-scheme" content="dark">
+<link rel="apple-touch-icon" href="icon.png">
+<title>Grand St Trains</title>
+<style>
+  :root {
+    --bg: #000;
+    --ink: #f4f5f7;
+    --silver: #c9ccd2;
+    --muted: rgba(235, 238, 245, 0.56);
+    --faint: rgba(235, 238, 245, 0.34);
+    --glass: linear-gradient(150deg, rgba(255, 255, 255, 0.13), rgba(255, 255, 255, 0.035) 55%, rgba(255, 255, 255, 0.07));
+    --glass-soft: rgba(255, 255, 255, 0.06);
+    --edge: rgba(255, 255, 255, 0.16);
+    --warn: #ffcf70;
+    --warn-glass: rgba(255, 190, 70, 0.12);
+    --top: calc(env(safe-area-inset-top) + 12px);
+    --bottom: calc(env(safe-area-inset-bottom) + 14px);
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; background: var(--bg); overflow: hidden; }
+  body {
+    color: var(--ink);
+    font: 16px/1.35 -apple-system, BlinkMacSystemFont, "SF Pro Display", "Helvetica Neue", Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    overscroll-behavior: none;
+  }
+
+  /* Hue/saturation of each page's lamp, animatable so color changes glide */
+  @property --hue { syntax: "<number>"; inherits: true; initial-value: 0; }
+  @property --sat { syntax: "<percentage>"; inherits: true; initial-value: 0%; }
+
+  /* Soft silver light behind the glass so it has something to refract */
+  .ambient { position: fixed; inset: 0; pointer-events: none; overflow: hidden; }
+  .ambient i {
+    position: absolute; border-radius: 50%; filter: blur(70px); opacity: 0.5;
+    animation: drift 24s ease-in-out infinite alternate;
+  }
+  .ambient i:nth-child(1) { width: 70vw; height: 70vw; left: -20vw; top: 8vh; background: radial-gradient(circle, #8d929b, transparent 70%); }
+  .ambient i:nth-child(2) { width: 60vw; height: 60vw; right: -22vw; top: 46vh; background: radial-gradient(circle, #5d636d, transparent 70%); animation-duration: 30s; }
+  .ambient i:nth-child(3) { width: 45vw; height: 45vw; left: 30vw; bottom: -14vh; background: radial-gradient(circle, #b7bbc3, transparent 70%); opacity: 0.22; animation-duration: 36s; }
+  @keyframes drift { to { transform: translate3d(6vw, -5vh, 0) scale(1.12); } }
+
+  .glass {
+    position: relative;
+    background: var(--glass);
+    -webkit-backdrop-filter: blur(28px) saturate(170%);
+    backdrop-filter: blur(28px) saturate(170%);
+    border: 1px solid var(--edge);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.28),
+      inset 0 -1px 0 rgba(255, 255, 255, 0.04),
+      0 24px 60px rgba(0, 0, 0, 0.55);
+  }
+  /* Specular sheen along the top-left edge */
+  .glass::before {
+    content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+    background: linear-gradient(160deg, rgba(255, 255, 255, 0.18), transparent 28%);
+    mix-blend-mode: screen;
+  }
+
+  /* ---------- Top bar ---------- */
+  .topbar {
+    position: fixed; z-index: 5; top: var(--top); left: 16px; right: 16px;
+    max-width: 520px; margin: 0 auto;
+    display: flex; align-items: center; gap: 12px;
+    padding: 8px 8px 8px 10px; border-radius: 999px;
+  }
+  .bullet {
+    width: 40px; height: 40px; border-radius: 50%; flex: none;
+    display: grid; place-items: center; font-weight: 700; font-size: 23px; color: #fff;
+    background: radial-gradient(circle at 35% 30%, #d4d6da, #8e9196 60%, #6d7075);
+    box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.6), inset 0 -2px 4px rgba(0, 0, 0, 0.25);
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+  }
+  .topbar h1 { margin: 0; font-size: 21px; letter-spacing: -0.01em; line-height: 1.1; }
+  .topbar .sub { font-size: 12px; color: var(--muted); }
+
+  #refresh {
+    margin-left: auto; flex: none; position: relative;
+    width: 50px; height: 50px; border-radius: 50%; padding: 0; cursor: pointer;
+    border: 1px solid var(--edge); color: var(--ink);
+    background: radial-gradient(circle at 50% 30%, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.03));
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3);
+    transition: transform 0.15s ease;
+  }
+  #refresh:active { transform: scale(0.92); }
+  #refresh svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+  #refresh .track { fill: none; stroke: rgba(255, 255, 255, 0.1); stroke-width: 2.5; }
+  #refresh .sweep { fill: none; stroke: url(#silver); stroke-width: 2.5; stroke-linecap: round; }
+  #refresh .tip { fill: #fff; filter: drop-shadow(0 0 3px rgba(255, 255, 255, 0.9)); }
+  #elapsed {
+    position: relative; font-size: 12px; font-weight: 600; letter-spacing: -0.01em;
+    font-variant-numeric: tabular-nums; color: var(--silver);
+  }
+  #refresh.stale .sweep { stroke: var(--warn); }
+  #refresh.stale #elapsed { color: var(--warn); }
+  #refresh.loading svg { animation: spin 0.9s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ---------- Pages ---------- */
+  /* Vertical scroll: train screen on top, shortcuts just below */
+  .scroller {
+    position: fixed; inset: 0; overflow-x: hidden; overflow-y: auto;
+    scroll-snap-type: y proximity; scrollbar-width: none; overscroll-behavior-y: none;
+  }
+  .scroller::-webkit-scrollbar { display: none; }
+  .screen { position: relative; height: 100vh; height: 100dvh; scroll-snap-align: start; }
+
+  .pages {
+    position: absolute; inset: 0;
+    display: flex; overflow-x: auto; overflow-y: hidden;
+    scroll-snap-type: x mandatory; scrollbar-width: none;
+    -webkit-overflow-scrolling: touch; overscroll-behavior-x: contain;
+  }
+  .pages::-webkit-scrollbar { display: none; }
+  .page {
+    flex: 0 0 100%; height: 100%;
+    scroll-snap-align: center; scroll-snap-stop: always;
+    padding: calc(var(--top) + 74px) 16px calc(var(--bottom) + 76px);
+    display: flex; justify-content: center; overflow: hidden;
+    position: relative;
+    --hue: 0; --sat: 0%;
+    transition: --hue 2.5s ease, --sat 2.5s ease;
+  }
+
+  /* Lava-lamp light behind each card: green → yellow → red as the train gets further away */
+  .lamp { position: absolute; inset: 0; pointer-events: none; z-index: 0; }
+  .lamp i {
+    position: absolute; filter: blur(48px); mix-blend-mode: screen;
+    border-radius: 42% 58% 63% 37% / 45% 40% 60% 55%;
+    animation: blob 18s ease-in-out infinite alternate, morph 11s ease-in-out infinite alternate;
+  }
+  .lamp i:nth-child(1) {
+    width: 72vw; height: 72vw; max-width: 380px; max-height: 380px; left: 2%; top: 22%;
+    background: hsl(var(--hue) var(--sat) 52% / 0.55);
+  }
+  .lamp i:nth-child(2) {
+    width: 58vw; height: 58vw; max-width: 300px; max-height: 300px; right: -4%; top: 48%;
+    background: hsl(calc(var(--hue) + 14) var(--sat) 46% / 0.5);
+    animation-duration: 23s, 14s; animation-delay: -7s, -3s;
+  }
+  .lamp i:nth-child(3) {
+    width: 44vw; height: 44vw; max-width: 230px; max-height: 230px; left: 26%; top: 66%;
+    background: hsl(calc(var(--hue) - 10) var(--sat) 60% / 0.4);
+    animation-duration: 27s, 9s; animation-delay: -12s, -5s;
+  }
+  @keyframes blob {
+    0%   { transform: translate3d(0, 0, 0) scale(1); }
+    50%  { transform: translate3d(9vw, -12vh, 0) scale(1.15); }
+    100% { transform: translate3d(-7vw, 6vh, 0) scale(0.92); }
+  }
+  @keyframes morph {
+    0%   { border-radius: 42% 58% 63% 37% / 45% 40% 60% 55%; }
+    100% { border-radius: 62% 38% 35% 65% / 58% 62% 38% 42%; }
+  }
+  .card { z-index: 1; }
+  .card {
+    min-width: 0;
+    width: 100%; max-width: 520px; height: 100%;
+    border-radius: 34px; padding: 22px 20px 18px;
+    display: flex; flex-direction: column; overflow: hidden;
+  }
+
+  .dir { display: flex; align-items: center; gap: 10px; }
+  .dir .arrow {
+    width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center;
+    background: var(--glass-soft); border: 1px solid var(--edge); font-size: 15px; color: var(--silver);
+  }
+  .dir h2 { margin: 0; font-size: 13px; font-weight: 600; letter-spacing: 0.09em; text-transform: uppercase; color: var(--silver); }
+  .dir .to { font-size: 13px; color: var(--muted); }
+
+  /* ---------- Alert sheet ---------- */
+  .sheet-wrap {
+    position: fixed; inset: 0; z-index: 20; display: flex; align-items: flex-end; justify-content: center;
+    padding: 0 10px calc(env(safe-area-inset-bottom) + 10px);
+    background: rgba(0, 0, 0, 0.45); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+    opacity: 0; pointer-events: none; transition: opacity 0.25s ease;
+  }
+  .sheet-wrap.open { opacity: 1; pointer-events: auto; }
+  .sheet {
+    width: 100%; max-width: 540px; max-height: 78vh; max-height: 78dvh; overflow-y: auto;
+    border-radius: 30px; padding: 20px 20px 22px;
+    background: linear-gradient(160deg, rgba(60, 62, 68, 0.72), rgba(24, 25, 28, 0.82));
+    transform: translateY(30px); transition: transform 0.3s cubic-bezier(.2, .9, .3, 1.15);
+  }
+  .sheet-wrap.open .sheet { transform: none; }
+  .sheet .grab { width: 38px; height: 5px; border-radius: 3px; background: rgba(255, 255, 255, 0.25); margin: -6px auto 14px; }
+  .sheet .close {
+    position: absolute; top: 14px; right: 14px; width: 32px; height: 32px; border-radius: 50%;
+    border: 1px solid var(--edge); background: var(--glass-soft); color: var(--silver); font-size: 15px; cursor: pointer;
+  }
+  .sheet .kicker { font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--warn); font-weight: 600; }
+  .sheet h3 { margin: 6px 40px 10px 0; font-size: 19px; line-height: 1.3; }
+  .sheet p { margin: 0 0 10px; color: rgba(240, 242, 246, 0.82); font-size: 15px; line-height: 1.45; }
+  .sheet .one + .one { margin-top: 18px; padding-top: 16px; border-top: 1px solid rgba(255, 255, 255, 0.1); }
+  .rb {
+    display: inline-grid; place-items: center; width: 1.25em; height: 1.25em; border-radius: 50%;
+    font-size: 0.8em; font-weight: 700; color: #fff; vertical-align: 0.08em; background: #808183;
+  }
+
+  .body { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+  .hero { margin: auto 0 0; padding-top: 10px; }
+  .hero .row { display: flex; align-items: baseline; gap: 8px; }
+  .hero .min {
+    font-size: clamp(104px, 34vw, 168px); font-weight: 700; line-height: 0.92; letter-spacing: -0.05em;
+    font-variant-numeric: tabular-nums;
+    background: linear-gradient(180deg, #ffffff 15%, #c3c7ce 70%, #8f949c);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .hero .min.now { font-size: clamp(84px, 24vw, 128px); }
+  .hero .unit { font-size: 28px; font-weight: 600; color: var(--silver); }
+  .hero .clock { margin-left: auto; white-space: nowrap; font-size: 20px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; min-height: 24px; }
+  .tag {
+    font-size: 12px; padding: 3px 10px; border-radius: 999px;
+    background: var(--glass-soft); border: 1px solid var(--edge); color: var(--muted);
+  }
+  .tag.short { color: var(--warn); background: var(--warn-glass); border-color: rgba(255, 200, 100, 0.22); }
+  button.tag {
+    font-family: inherit; cursor: pointer; max-width: 100%;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  button.tag:active { transform: scale(0.96); }
+
+  .later { margin: auto 0 0; padding-top: 18px; display: flex; flex-direction: column; gap: 8px; }
+  .later .item {
+    display: flex; align-items: baseline; gap: 10px;
+    padding: 11px 14px; border-radius: 18px;
+    background: var(--glass-soft); border: 1px solid rgba(255, 255, 255, 0.08);
+    font-variant-numeric: tabular-nums;
+  }
+  .item b { font-size: 22px; font-weight: 650; min-width: 34px; text-align: right; }
+  .item .u { color: var(--muted); font-size: 14px; }
+  .item .meta { margin-left: auto; color: var(--muted); font-size: 13.5px; text-align: right; }
+  .item.sched b { color: var(--muted); }
+
+  .empty { margin: auto 0; text-align: center; color: var(--muted); }
+  .err { color: #ff8a80; }
+
+  /* ---------- Bottom bar ---------- */
+  .bottombar {
+    position: absolute; z-index: 5; bottom: var(--bottom); left: 16px; right: 16px;
+    max-width: 520px; margin: 0 auto;
+    display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 12px;
+  }
+  .bottombar a {
+    text-align: center; text-decoration: none; color: var(--ink);
+    padding: 13px 10px; border-radius: 999px; font-size: 14px; font-weight: 600;
+  }
+  .dots { display: flex; gap: 8px; padding: 10px 12px; border-radius: 999px; }
+  .dots button {
+    width: 8px; height: 8px; padding: 0; border: 0; border-radius: 999px; cursor: pointer;
+    background: rgba(255, 255, 255, 0.3); transition: width 0.25s ease, background 0.25s ease;
+  }
+  .dots button.on { width: 22px; background: var(--silver); }
+
+  /* ---------- Shortcuts ---------- */
+  .shortcuts {
+    position: relative; scroll-snap-align: end;
+    max-width: 552px; margin: 0 auto;
+    padding: 4px 16px calc(env(safe-area-inset-bottom) + 18px);
+  }
+  .shortcuts .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; padding: 14px; border-radius: 30px; }
+  .shortcut {
+    aspect-ratio: 1; border-radius: 22px; text-decoration: none; color: var(--ink);
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
+    font-size: 11.5px; font-weight: 600; text-align: center; line-height: 1.1;
+  }
+  .shortcut svg { width: 26px; height: 26px; }
+  a.shortcut { transition: transform 0.15s ease; }
+  a.shortcut:active { transform: scale(0.94); }
+  .shortcut.empty {
+    border: 1.5px dashed rgba(255, 255, 255, 0.14); color: var(--faint); font-size: 22px; font-weight: 300;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .ambient i, .lamp i, #refresh.loading svg { animation: none; }
+  }
+</style>
+</head>
+<body>
+<div class="ambient" aria-hidden="true"><i></i><i></i><i></i></div>
+
+<header class="topbar glass">
+  <div class="bullet" aria-label="L train">L</div>
+  <div>
+    <h1>Grand St</h1>
+    <div class="sub">Williamsburg · Brooklyn</div>
+  </div>
+  <button id="refresh" type="button" aria-label="Refresh — time since last update">
+    <svg viewBox="0 0 50 50" aria-hidden="true">
+      <defs>
+        <linearGradient id="silver" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#9aa0a8"/>
+        </linearGradient>
+      </defs>
+      <circle class="track" cx="25" cy="25" r="21"/>
+      <circle class="sweep" id="sweep" cx="25" cy="25" r="21" transform="rotate(-90 25 25)"/>
+      <circle class="tip" id="tip" cx="25" cy="4" r="2.6"/>
+    </svg>
+    <span id="elapsed">0:00</span>
+  </button>
+</header>
+
+<div class="scroller" id="scroller">
+<div class="screen">
+<div class="pages" id="pages">
+  <section class="page" data-dir="N">
+    <div class="lamp" aria-hidden="true"><i></i><i></i><i></i></div>
+    <div class="card glass">
+      <div class="dir"><span class="arrow">↖</span><div><h2>Manhattan-bound</h2><div class="to">toward 8 Av</div></div></div>
+      <div class="body"><div class="empty">Loading…</div></div>
+    </div>
+  </section>
+  <section class="page" data-dir="S">
+    <div class="lamp" aria-hidden="true"><i></i><i></i><i></i></div>
+    <div class="card glass">
+      <div class="dir"><span class="arrow">↘</span><div><h2>Brooklyn-bound</h2><div class="to">toward Canarsie</div></div></div>
+      <div class="body"><div class="empty">Loading…</div></div>
+    </div>
+  </section>
+</div>
+
+<nav class="bottombar">
+  <a class="glass" href="https://www.google.com/maps/search/?api=1&query=Grand%20St%20station%20L%20train%20Brooklyn">Google Maps</a>
+  <div class="dots glass" role="tablist">
+    <button class="on" aria-label="Manhattan-bound"></button>
+    <button aria-label="Brooklyn-bound"></button>
+  </div>
+  <a class="glass" href="https://maps.apple.com/?q=Grand%20St%20(L)&ll=40.711926,-73.940670&z=17">Apple Maps</a>
+</nav>
+</div>
+
+<section class="shortcuts" aria-label="Shortcuts">
+  <div class="grid glass">
+    <a class="shortcut glass" href="https://maps.apple.com/?daddr=1375%20Broadway,%20New%20York,%20NY%2010018&dirflg=r">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="7" width="18" height="13" rx="2.5"/><path d="M9 7V5.5A1.5 1.5 0 0 1 10.5 4h3A1.5 1.5 0 0 1 15 5.5V7M3 12.5h18"/></svg>
+      Wills Office
+    </a>
+    <a class="shortcut glass" href="https://www.youtube.com/watch?v=fj5aAvFnd8I">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5.5 14.5h13a2.75 2.75 0 0 1 0 5.5h-13a2.75 2.75 0 0 1 0-5.5zM7.5 10h9a2.25 2.25 0 0 1 0 4.5h-9a2.25 2.25 0 0 1 0-4.5zM9.5 10c0-2.2 1.5-3.4 3.1-3.6-.2-1.2.4-2.2 1.6-2.6-.2 1.2.6 2 .6 3.6 0 1.2-.4 2-.8 2.6M9.6 17.1q2.4 1.6 4.8 0"/><circle cx="10" cy="12.25" r=".5" fill="currentColor"/><circle cx="14" cy="12.25" r=".5" fill="currentColor"/></svg>
+      Oliver’s poop
+    </a>
+    <div class="shortcut empty" aria-hidden="true">+</div>
+    <div class="shortcut empty" aria-hidden="true">+</div>
+  </div>
+</section>
+</div>
+
+<div class="sheet-wrap" id="sheet" role="dialog" aria-modal="true" aria-label="Service alert">
+  <div class="sheet glass">
+    <div class="grab"></div>
+    <button class="close" type="button" aria-label="Close">✕</button>
+    <div id="sheet-body"></div>
+  </div>
+</div>
+
+<script>
+  const TERMINAL = { N: "8 Av", S: "Canarsie-Rockaway Pkwy" };
+  const REFRESH_MS = 30000;
+  let data = null;
+  let lastRefresh = null;
+  let loading = false;
+
+  const minsUntil = t => Math.max(0, Math.floor((t * 1000 - Date.now()) / 60000));
+  const clock = t => new Date(t * 1000).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const upcoming = list => (list || []).filter(a => a.time * 1000 > Date.now() - 30000);
+
+  /* ---------- Rendering ---------- */
+  function renderDirection(dir) {
+    const card = document.querySelector(`.page[data-dir="${dir}"]`);
+    const body = card.querySelector(".body");
+
+    const next = data.mta.error ? null : upcoming(data.mta.arrivals[dir])[0];
+    setLamp(card, next ? (next.time * 1000 - Date.now()) / 60000 : null);
+
+    if (data.mta.error) { body.innerHTML = `<div class="empty err">Couldn’t reach the MTA feed.</div>`; return; }
+    const trains = upcoming(data.mta.arrivals[dir]);
+    if (!trains.length) { body.innerHTML = `<div class="empty">No trains predicted right now.</div>`; return; }
+
+    const [first, ...rest] = trains;
+    const m = minsUntil(first.time);
+    const tags = [];
+    const alerts = alertsFor(dir);
+    if (first.to !== TERMINAL[dir]) {
+      tags.push(`<button class="tag short" data-dir="${dir}" data-ends="${esc(first.to)}">Terminates at ${esc(first.to)} ›</button>`);
+    } else {
+      alerts.forEach((a, i) => tags.push(
+        `<button class="tag short" data-dir="${dir}" data-i="${i}">⚠︎ ${esc(plain(a.header))} ›</button>`));
+    }
+    if (first.scheduledOnly) tags.push(`<span class="tag">Scheduled, not yet dispatched</span>`);
+
+    body.innerHTML = `
+      <div class="hero">
+        <div class="row">
+          <span class="min${m === 0 ? " now" : ""}">${m === 0 ? "Now" : m}</span>${m === 0 ? "" : `<span class="unit">min</span>`}
+          <span class="clock">${clock(first.time)}</span>
+        </div>
+        <div class="tags">${tags.join("")}</div>
+      </div>
+      <div class="later">${rest.slice(0, 4).map(a => `
+        <div class="item${a.scheduledOnly ? " sched" : ""}">
+          <b>${minsUntil(a.time)}</b><span class="u">min</span>
+          <span class="meta">${a.to !== TERMINAL[dir] ? esc(a.to) + " · " : ""}${clock(a.time)}${a.scheduledOnly ? " · sched." : ""}</span>
+        </div>`).join("")}
+      </div>`;
+  }
+
+  /* ---------- MTA alerts ---------- */
+  const ROUTE_COLORS = {
+    A: "#0039a6", C: "#0039a6", E: "#0039a6", B: "#ff6319", D: "#ff6319", F: "#ff6319", M: "#ff6319",
+    G: "#6cbe45", J: "#996633", Z: "#996633", L: "#a7a9ac", N: "#fccc0a", Q: "#fccc0a", R: "#fccc0a",
+    W: "#fccc0a", 1: "#ee352e", 2: "#ee352e", 3: "#ee352e", 4: "#00933c", 5: "#00933c", 6: "#00933c", 7: "#b933ad",
+  };
+  // An alert matters for a direction if it names Grand St, a station on that side of it, or no station at all.
+  function alertsFor(dir) {
+    const onSide = s => dir === "N" ? s < "L12" : s > "L12";
+    return (data.alerts || []).filter(a => !a.stops.length || a.stops.includes("L12") || a.stops.some(onSide));
+  }
+  const plain = t => t.replace(/\[([A-Z0-9]{1,2})\]/g, "$1").replace(/\s*\[[^\]]*icon\]\s*/g, " ").trim();
+  function rich(t) {
+    return esc(t)
+      .replace(/\[shuttle bus icon\]/g, "🚌")
+      .replace(/\[accessibility icon\]/g, "♿︎")
+      .replace(/\[[^\]]*icon\]/g, "")
+      .replace(/\[([A-Z0-9]{1,2})\]/g, (_, r) =>
+        `<span class="rb" style="background:${ROUTE_COLORS[r] || "#808183"};${"NQRW".includes(r) ? "color:#111" : ""}">${r}</span>`)
+      .split(/\n{2,}/).map(p => `<p>${p.replace(/\n/g, "<br>")}</p>`).join("");
+  }
+
+  const sheet = document.getElementById("sheet");
+  const sheetBody = document.getElementById("sheet-body");
+  function openSheet(html) {
+    sheetBody.innerHTML = html;
+    sheet.querySelector(".sheet").scrollTop = 0;
+    sheet.classList.add("open");
+  }
+  const closeSheet = () => sheet.classList.remove("open");
+  sheet.addEventListener("click", e => { if (e.target === sheet || e.target.closest(".close")) closeSheet(); });
+  document.addEventListener("keydown", e => { if (e.key === "Escape") closeSheet(); });
+
+  document.addEventListener("click", e => {
+    const tag = e.target.closest("button.tag");
+    if (!tag || !data) return;
+    const all = alertsFor(tag.dataset.dir);
+    const list = tag.dataset.i !== undefined ? [all[+tag.dataset.i]].filter(Boolean) : all;
+    const kicker = tag.dataset.ends ? `Terminates at ${esc(tag.dataset.ends)}` : "Service alert";
+    openSheet(list.length
+      ? list.map(a => `<div class="one"><div class="kicker">${kicker}</div><h3>${rich(a.header)}</h3>${rich(a.description)}</div>`).join("")
+      : `<div class="one"><div class="kicker">${kicker}</div><h3>This train ends at ${esc(tag.dataset.ends || "")}.</h3>
+         <p>The MTA hasn’t posted an alert explaining it.</p></div>`);
+  });
+
+  /* ≤1 min green → 4–5 min yellow → 10+ min red, blended smoothly in between */
+  const GREEN = 140, YELLOW = 50, RED = 4;
+  const lerp = (a, b, t) => a + (b - a) * Math.min(1, Math.max(0, t));
+  function hueFor(min) {
+    if (min <= 1) return GREEN;
+    if (min <= 4) return lerp(GREEN, YELLOW, (min - 1) / 3);
+    if (min <= 5) return YELLOW;
+    return lerp(YELLOW, RED, (min - 5) / 5);
+  }
+  function setLamp(card, min) {
+    card.style.setProperty("--hue", min === null ? 0 : hueFor(min).toFixed(1));
+    card.style.setProperty("--sat", min === null ? "0%" : "88%");
+  }
+
+  function render() {
+    if (!data) return;
+    renderDirection("N");
+    renderDirection("S");
+  }
+
+  /* ---------- Refresh clock: counts up since last refresh, one lap per minute ---------- */
+  const btn = document.getElementById("refresh");
+  const sweep = document.getElementById("sweep");
+  const tip = document.getElementById("tip");
+  const elapsedEl = document.getElementById("elapsed");
+  const R = 21, C = 2 * Math.PI * R;
+  sweep.style.strokeDasharray = C;
+
+  function fmt(sec) {
+    const h = Math.floor(sec / 3600), m = Math.floor(sec / 60) % 60, s = sec % 60;
+    return h ? `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}` : `${m}:${String(s).padStart(2, "0")}`;
+  }
+
+  function tickClock() {
+    if (lastRefresh !== null) {
+      const ms = Date.now() - lastRefresh;
+      const frac = (ms % 60000) / 60000;
+      sweep.style.strokeDashoffset = loading ? C * 0.75 : C * (1 - frac);
+      const a = (loading ? 0.25 : frac) * 2 * Math.PI - Math.PI / 2;
+      tip.setAttribute("cx", 25 + R * Math.cos(a));
+      tip.setAttribute("cy", 25 + R * Math.sin(a));
+      elapsedEl.textContent = fmt(Math.floor(ms / 1000));
+      btn.classList.toggle("stale", ms > 90000);
+    }
+    requestAnimationFrame(tickClock);
+  }
+  requestAnimationFrame(tickClock);
+
+  /* ---------- Data: straight from the MTA's public feeds ---------- */
+  const L_FEED = "https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-l";
+  const ALERTS_FEED = "https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/camsys%2Fsubway-alerts.json";
+  const ALERTS_EVERY_MS = 120000; // alerts feed is ~80 KB, so fetch it less often than train times
+  const STOP = "L12"; // Grand St
+  const L_STOPS = {
+    L01: "8 Av", L02: "6 Av", L03: "14 St-Union Sq", L05: "3 Av", L06: "1 Av", L08: "Bedford Av",
+    L10: "Lorimer St", L11: "Graham Av", L12: "Grand St", L13: "Montrose Av", L14: "Morgan Av",
+    L15: "Jefferson St", L16: "DeKalb Av", L17: "Myrtle-Wyckoff Avs", L19: "Halsey St", L20: "Wilson Av",
+    L21: "Bushwick Av-Aberdeen St", L22: "Broadway Junction", L24: "Atlantic Av", L25: "Sutter Av",
+    L26: "Livonia Av", L27: "New Lots Av", L28: "East 105 St", L29: "Canarsie-Rockaway Pkwy",
+  };
+
+  // Minimal protobuf reader (enough for GTFS-realtime)
+  function varint(buf, i) {
+    let v = 0, mul = 1, b;
+    do { b = buf[i++]; v += (b & 0x7f) * mul; mul *= 128; } while (b & 0x80);
+    return [v, i];
+  }
+  function fields(buf) {
+    const out = [];
+    let i = 0, key, val, len;
+    while (i < buf.length) {
+      [key, i] = varint(buf, i);
+      const num = Math.floor(key / 8), wire = key % 8;
+      if (wire === 0) [val, i] = varint(buf, i);
+      else if (wire === 1) { val = null; i += 8; }
+      else if (wire === 2) { [len, i] = varint(buf, i); val = buf.subarray(i, i + len); i += len; }
+      else if (wire === 5) { val = null; i += 4; }
+      else throw new Error(`unsupported wire type ${wire}`);
+      out.push([num, val]);
+    }
+    return out;
+  }
+  const first = (buf, num) => { if (buf) for (const [k, v] of fields(buf)) if (k === num) return v; };
+  const utf8 = new TextDecoder();
+  const str = b => b ? utf8.decode(b) : "";
+
+  async function mtaArrivals() {
+    const r = await fetch(L_FEED, { cache: "no-store" });
+    if (!r.ok) throw new Error(`MTA returned ${r.status}`);
+    const feed = new Uint8Array(await r.arrayBuffer());
+    const now = Date.now() / 1000;
+    const arrivals = { N: [], S: [] };
+    for (const [num, entity] of fields(feed)) {
+      if (num !== 2) continue;
+      const tripUpdate = first(entity, 3);
+      if (!tripUpdate) continue;
+      const nyct = first(first(tripUpdate, 1), 1001);
+      const assigned = nyct ? !!first(nyct, 2) : true;
+      const updates = fields(tripUpdate).filter(([k]) => k === 2).map(([, v]) => v);
+      if (!updates.length) continue;
+      const lastStop = str(first(updates[updates.length - 1], 4)).slice(0, 3);
+      for (const stu of updates) {
+        const stopId = str(first(stu, 4));
+        if (stopId.slice(0, 3) !== STOP || !arrivals[stopId[3]]) continue;
+        const t = first(first(stu, 2) || first(stu, 3), 2);
+        if (!t || t < now - 30) continue;
+        arrivals[stopId[3]].push({ time: t, to: L_STOPS[lastStop] || lastStop, scheduledOnly: !assigned });
+      }
+    }
+    for (const d in arrivals) arrivals[d] = arrivals[d].sort((a, b) => a.time - b.time).slice(0, 6);
+    return { arrivals };
+  }
+
+  // Every currently active L alert, with the stops it covers
+  async function mtaAlerts() {
+    const r = await fetch(ALERTS_FEED, { cache: "no-store" });
+    if (!r.ok) throw new Error(`MTA returned ${r.status}`);
+    const feed = await r.json();
+    const now = Date.now() / 1000, seen = new Set(), out = [];
+    const english = f => (((f || {}).translation || []).find(t => t.language === "en") || {}).text || "";
+    for (const e of feed.entity || []) {
+      const a = e.alert || {};
+      const ents = (a.informed_entity || []).filter(i => i.route_id === "L");
+      if (!ents.length) continue;
+      const periods = (a.active_period || []).length ? a.active_period : [{}];
+      if (!periods.some(p => (p.start || 0) <= now && now <= (p.end || now + 1))) continue;
+      const header = english(a.header_text);
+      if (!header || seen.has(header)) continue;
+      seen.add(header);
+      out.push({
+        header,
+        description: english(a.description_text),
+        stops: [...new Set(ents.filter(i => i.stop_id).map(i => i.stop_id.slice(0, 3)))].sort(),
+      });
+    }
+    return out;
+  }
+
+  let alerts = [], alertsAt = 0;
+  async function load(force) {
+    if (loading) return;
+    loading = true;
+    btn.classList.add("loading");
+    try {
+      const wantAlerts = force === true || Date.now() - alertsAt > ALERTS_EVERY_MS;
+      const [mta, fresh] = await Promise.all([
+        mtaArrivals(),
+        wantAlerts ? mtaAlerts().catch(() => null) : null,
+      ]);
+      if (fresh) { alerts = fresh; alertsAt = Date.now(); }
+      data = { mta, alerts };
+      lastRefresh = Date.now();
+      render();
+    } catch (e) {
+      if (!data) document.querySelectorAll(".body").forEach(b =>
+        b.innerHTML = `<div class="empty err">Couldn’t reach the MTA. Check your connection.</div>`);
+    } finally {
+      loading = false;
+      btn.classList.remove("loading");
+    }
+  }
+
+  btn.addEventListener("click", () => load(true));
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) load(); });
+  load();
+  setInterval(load, REFRESH_MS);
+  setInterval(render, 5000);
+
+  /* ---------- Paging ---------- */
+  const pages = document.getElementById("pages");
+  const dots = [...document.querySelectorAll(".dots button")];
+  const goTo = i => pages.scrollTo({ left: i * pages.clientWidth, behavior: "smooth" });
+  dots.forEach((d, i) => d.addEventListener("click", () => goTo(i)));
+  pages.addEventListener("scroll", () => {
+    const i = Math.round(pages.scrollLeft / pages.clientWidth);
+    dots.forEach((d, j) => d.classList.toggle("on", i === j));
+  }, { passive: true });
+  document.addEventListener("keydown", e => {
+    if (e.key === "ArrowRight") goTo(1);
+    if (e.key === "ArrowLeft") goTo(0);
+  });
+</script>
+</body>
+</html>
